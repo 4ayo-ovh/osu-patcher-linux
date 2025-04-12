@@ -11,27 +11,22 @@ namespace Osu.Patcher.Hook.Patches.LivePerformance;
 [UsedImplicitly]
 internal class PerformanceOptions : PatchOptions
 {
-    private static readonly OptionDropdown OptionDropdownStub = new(typeof(PerformanceCalculatorType));
-
     public override IEnumerable<object> CreateOptions() =>
     [
         CreateInGameDisplayOption(),
         CreateLeaderboardDisplayOption(),
-        CreatePerformanceTypeOption(),
     ];
 
     public override void Load(Settings config)
     {
         ShowPerformanceInGame.Value = config.ShowPerformanceInGame;
         ShowPerformanceOnLeaderboard.Value = config.ShowPerformanceOnLeaderboard;
-        PerformanceType.Value = config.PerformanceCalculator;
     }
 
     public override void Save(Settings config)
     {
         config.ShowPerformanceInGame = ShowPerformanceInGame.Value;
         config.ShowPerformanceOnLeaderboard = ShowPerformanceOnLeaderboard.Value;
-        config.PerformanceCalculator = PerformanceType.Value;
     }
 
     #region Options Creation
@@ -50,26 +45,6 @@ internal class PerformanceOptions : PatchOptions
         /* onChange: */ null,
     ]);
 
-    private static object CreatePerformanceTypeOption()
-    {
-        var dropdownOptions = new[]
-        {
-            pDropdownItem.Constructor.Invoke(["Bancho", PerformanceCalculatorType.Bancho]),
-            pDropdownItem.Constructor.Invoke(["Akatsuki", PerformanceCalculatorType.Akatsuki]),
-            pDropdownItem.Constructor.Invoke([
-                "Akatsuki if RX/AP else Bancho",
-                PerformanceCalculatorType.AkatsukiLimited,
-            ]),
-        }.ToType(pDropdownItem.Class.Reference);
-
-        return OptionDropdownStub.Constructor.Invoke([
-            /* title: */ AddOsuString("PatcherPerformance", "PP calculator"),
-            /* items: */ dropdownOptions,
-            /* bindable: */ PerformanceType.Bindable,
-            /* onChange: */ null,
-        ]);
-    }
-
     #endregion
 
     #region Bindables
@@ -79,12 +54,6 @@ internal class PerformanceOptions : PatchOptions
 
     public static readonly BindableWrapper<bool> ShowPerformanceOnLeaderboard =
         new(BindableType.Bool, false, Settings.Default.ShowPerformanceOnLeaderboard);
-
-    public static readonly BindableWrapper<PerformanceCalculatorType> PerformanceType = new(
-        BindableType.Object,
-        Settings.Default.PerformanceCalculator,
-        Settings.Default.PerformanceCalculator
-    );
 
     #endregion
 }
