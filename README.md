@@ -4,7 +4,7 @@
 
 ## ⚠️ Important Note
 
-This Wine-compatible version *is capable of injecting into Bancho*, unlike the non-Wine-friendly version, which lacks this feature for compatibility reasons.  
+This Wine-compatible version *is capable of injecting into Bancho* (in order to prevent compatibility issues), unlike the non-Wine-friendly version.  
 Because of this, it performs a Wine check before running to prevent misuse of the tool when using pre-built binaries.
 
 > **Disclaimer:** I am *not* responsible for any bans that may occur as a result of using this tool.
