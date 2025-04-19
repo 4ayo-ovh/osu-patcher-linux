@@ -1,19 +1,35 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
-using System.Management;
-using System.Runtime.Versioning;
+using System.Runtime.InteropServices;
+using System.Text;
 using HoLLy.ManagedInjector;
 
 namespace Osu.Patcher.Injector;
 
-[SupportedOSPlatform("windows")]
 internal static class Injector
 {
-    public static void Main()
+    public static void Main(string[] args)
     {
         try
         {
-            using var proc = new InjectableProcess(GetOsuPid());
+            if (Process.GetProcessesByName("winedevice").Length == 0)
+            {
+                Console.WriteLine("winedevice.exe not found. Skipping injection.");
+                return;
+            }
+
+            uint pid = args.Length > 0 && uint.TryParse(args[0], out var parsedPid)
+                ? parsedPid
+                : throw new ArgumentException("Please provide a PID as an argument.");
+
+            using var process = Process.GetProcessById((int)pid);
+            EnsureSameBitness(process);
+
+            string cmdline = GetCommandLine(process);
+            var cliArgs = cmdline.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            using var proc = new InjectableProcess(pid);
             var dllPath = Path.GetFullPath(typeof(Injector).Assembly.Location + @"\..\osu!.hook.dll");
 
             proc.Inject(dllPath, "Osu.Patcher.Hook.Hook", "Initialize");
@@ -21,39 +37,99 @@ internal static class Injector
         catch (Exception e)
         {
             Console.Error.WriteLine(e);
-
             Console.WriteLine("\nPress any key to continue...");
-            Console.Write("\a"); // Bell sound
+            Console.Write("\a");
             Console.ReadKey();
         }
     }
 
-    /// <summary>
-    ///     Find a <c>osu!.exe</c> process that has a <c>devserver</c> in the cli arguments. (Not connected to Bancho)
-    /// </summary>
-    /// <returns>The process id of the first matching process.</returns>
-    /// <exception cref="Exception">If found invalid osu! process or no process at all.</exception>
-    private static uint GetOsuPid()
+
+    private static string GetCommandLine(Process process)
     {
-        using var mgmt = new ManagementClass("Win32_Process");
-        using var processes = mgmt.GetInstances();
+        var hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, process.Id);
+        if (hProcess == IntPtr.Zero)
+            throw new InvalidOperationException("Cannot open process.");
 
-        foreach (var process in processes)
+        try
         {
-            var exe = (string)process["Name"];
-            var pid = (uint)process["ProcessId"];
-            var cli = (string)process["CommandLine"];
+            var pbi = new PROCESS_BASIC_INFORMATION();
+            int status = NtQueryInformationProcess(hProcess, 0, ref pbi, Marshal.SizeOf(pbi), out _);
+            if (status != 0) throw new Exception("NtQueryInformationProcess failed.");
 
-            if (exe != "osu!.exe") continue;
+            IntPtr pebAddress = pbi.PebBaseAddress;
+            ReadProcessMemory(hProcess, pebAddress + 0x20, out IntPtr procParams, IntPtr.Size, out _);
+            ReadProcessMemory(hProcess, procParams + 0x70, out UNICODE_STRING cmdLine, Marshal.SizeOf<UNICODE_STRING>(), out _);
 
-            // Make sure devserver arg is present and not pointing to ppy.sh
-            var args = cli.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (args is not [_, "-devserver", { Length: > 3 }] || args is [_, "-devserver", "ppy.sh"])
-                throw new Exception("Will not inject into osu! connected to Bancho!");
+            byte[] buffer = new byte[cmdLine.Length];
+            ReadProcessMemory(hProcess, cmdLine.Buffer, buffer, buffer.Length, out _);
 
-            return pid;
+            return Encoding.Unicode.GetString(buffer);
         }
+        finally
+        {
+            CloseHandle(hProcess);
+        }
+    }
 
-        throw new Exception("Cannot find a running osu! process!");
+    private static void EnsureSameBitness(Process process)
+    {
+        if (!IsSameBitness(process))
+        {
+            throw new InvalidOperationException("Injector and target process architectures do not match.");
+        }
+    }
+
+    private static bool IsSameBitness(Process process)
+    {
+        if (!Environment.Is64BitOperatingSystem)
+            return true;
+
+        IsWow64Process(Process.GetCurrentProcess().Handle, out bool isCurrentWow64);
+        IsWow64Process(process.Handle, out bool isTargetWow64);
+
+        return isCurrentWow64 == isTargetWow64;
+    }
+
+    private const int PROCESS_QUERY_INFORMATION = 0x0400;
+    private const int PROCESS_VM_READ = 0x0010;
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtQueryInformationProcess(IntPtr hProcess, int processInformationClass, ref PROCESS_BASIC_INFORMATION pbi, int cb, out int pSize);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr OpenProcess(int access, bool inheritHandle, int pid);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr baseAddress, out IntPtr buffer, int size, out int read);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr baseAddress, out UNICODE_STRING buffer, int size, out int read);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr baseAddress, byte[] buffer, int size, out int read);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool IsWow64Process(IntPtr processHandle, out bool isWow64);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_BASIC_INFORMATION
+    {
+        public IntPtr Reserved1;
+        public IntPtr PebBaseAddress;
+        public IntPtr Reserved2_0;
+        public IntPtr Reserved2_1;
+        public IntPtr UniquePid;
+        public IntPtr Reserved3;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct UNICODE_STRING
+    {
+        public ushort Length;
+        public ushort MaximumLength;
+        public IntPtr Buffer;
     }
 }

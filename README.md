@@ -2,6 +2,14 @@
   <img align="center" width="400" alt="osu! logo" src=".github/assets/logo.png">
 </p>
 
+## ⚠️ Important Note
+
+This Wine-compatible version *is capable of injecting into Bancho*, unlike the non-Wine-friendly version, which lacks this feature for compatibility reasons.  
+Because of this, it performs a Wine check before running to prevent misuse of the tool when using pre-built binaries.
+
+> **Disclaimer:** I am *not* responsible for any bans that may occur as a result of using this tool.
+
+
 # osu! patcher
 
 Apply several fixes to osu! make playing Relax more enjoyable.
@@ -20,6 +28,7 @@ Using this on official Bancho servers WILL get you banned.
 - Save all Relax scores to local leaderboards automatically
 - Allow failing with Relax enabled
 - Re-enable the low hp glow (with shaders on)
+- WINE support
 
 <sup>Note: Relax refers to Relax *or* Autopilot</sup>
 
@@ -56,7 +65,7 @@ into processes. If you aren't convinced it isn't a false positive, feel free to 
 ## Compiling
 
 1. Install the .NET SDK 8, the .NET Framework 4.5.2 developer pack, and Rust (rustup/cargo).
-2. Run `dotnet build Osu.Patcher.Injector -c Release`
+2. Run `dotnet build Osu.Patcher.Injector -r win-x86 -c Release`
 3. Output will be located in `./Osu.Patcher.Injector/bin/Release/net8.0/`
 
 ## How
